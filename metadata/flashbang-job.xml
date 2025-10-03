@@ -1,27 +1,32 @@
 <?xml version="1.0"?>
 <wayfire>
-	<plugin name="fisheye">
-		<_short>Fisheye</_short>
-		<_long>A plugin which provides fisheye effect.</_long>
-		<category>Effects</category>
-		<option name="toggle" type="activator">
-			<_short>Toggle</_short>
-			<_long>Toggles fisheye with the specified activator.</_long>
-			<default>&lt;super&gt; &lt;ctrl&gt; KEY_F</default>
-		</option>
-		<option name="radius" type="double">
-			<_short>Radius</_short>
-			<_long>Sets the border radius in pixels.</_long>
-			<default>450.0</default>
-			<min>1.0</min>
-		</option>
-		<option name="zoom" type="double">
-			<_short>Zoom</_short>
-			<_long>Sets the zoom factor.</_long>
-			<default>7.0</default>
-			<min>1.0</min>
-			<max>20.0</max>
-			<precision>0.01</precision>
-		</option>
-	</plugin>
+    <plugin name="flashbang-job">
+        <_short>Flashbang Job Effect</_short>
+        <_long>Displays a flashbang effect followed by a job application image</_long>
+        <category>Effects</category>
+        
+        <option name="flashbang_duration" type="int">
+            <_short>Flashbang Duration</_short>
+            <_long>Duration of the flashbang effect in milliseconds</_long>
+            <default>300</default>
+            <min>100</min>
+            <max>2000</max>
+        </option>
+        
+        <option name="image_show_duration" type="int">
+            <_short>Image Show Duration</_short>
+            <_long>How long to display the job application image in milliseconds</_long>
+            <default>5000</default>
+            <min>1000</min>
+            <max>30000</max>
+        </option>
+        
+        <option name="fade_duration" type="int">
+            <_short>Fade Duration</_short>
+            <_long>Duration of fade in/out transitions in milliseconds</_long>
+            <default>500</default>
+            <min>100</min>
+            <max>2000</max>
+        </option>
+    </plugin>
 </wayfire>
