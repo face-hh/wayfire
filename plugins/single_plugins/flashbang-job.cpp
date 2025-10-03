@@ -3,9 +3,10 @@
 #include <wayfire/opengl.hpp>
 #include <wayfire/util/duration.hpp>
 #include <wayfire/render-manager.hpp>
-#include <wayfire/img.hpp>
 #include <wayfire/core.hpp>
-#include <wayfire/signal-definitions.hpp>
+#include <wayfire/plugins/ipc/ipc-method-repository.hpp>
+#include <wayfire/plugins/common/shared-core-data.hpp>
+#include <cairo/cairo.h>
 
 static const char *vertex_shader =
     R"(
@@ -67,21 +68,20 @@ class wayfire_flashbang_job : public wf::per_output_plugin_instance_t
     wf::option_wrapper_t<int> fade_duration{"flashbang-job/fade_duration"};
     
     uint32_t state_start_time = 0;
+    int image_width = 0;
+    int image_height = 0;
+
+    wf::shared_data::ref_ptr_t<wf::ipc::method_repository_t> ipc_repo;
 
     wf::plugin_activation_data_t grab_interface = {
         .name = "flashbang-job",
         .capabilities = 0,
     };
 
-    wf::signal::connection_t<wf::ipc_activated_signal> ipc_signal = [=] (wf::ipc_activated_signal *ev)
+    wf::ipc::method_callback trigger_ipc = [=] (wf::json_t data) -> wf::json_t
     {
-        if (ev->method_name != "flashbang-job/trigger")
-        {
-            return;
-        }
-
         trigger_effect();
-        ev->output["result"] = "triggered";
+        return wf::ipc::json_ok();
     };
 
   public:
@@ -99,7 +99,7 @@ class wayfire_flashbang_job : public wf::per_output_plugin_instance_t
             load_job_image();
         });
 
-        output->connect(&ipc_signal);
+        ipc_repo->register_method("flashbang-job/trigger", trigger_ipc);
     }
 
     void load_job_image()
@@ -107,12 +107,21 @@ class wayfire_flashbang_job : public wf::per_output_plugin_instance_t
         std::string home = getenv("HOME") ?: "";
         std::string image_path = home + "/.fuck/job.png";
         
-        auto image = wf::image_io::load_from_file(image_path);
-        if (!image.data)
+        cairo_surface_t *surface = cairo_image_surface_create_from_png(image_path.c_str());
+        
+        cairo_status_t status = cairo_surface_status(surface);
+        if (status != CAIRO_STATUS_SUCCESS)
         {
-            LOGE("flashbang-job: Failed to load image from ", image_path);
+            LOGE("flashbang-job: Failed to load image from ", image_path, 
+                 ": ", cairo_status_to_string(status));
+            cairo_surface_destroy(surface);
             return;
         }
+
+        image_width = cairo_image_surface_get_width(surface);
+        image_height = cairo_image_surface_get_height(surface);
+        unsigned char *data = cairo_image_surface_get_data(surface);
+        cairo_format_t format = cairo_image_surface_get_format(surface);
 
         GL_CALL(glGenTextures(1, &job_texture));
         GL_CALL(glBindTexture(GL_TEXTURE_2D, job_texture));
@@ -121,22 +130,56 @@ class wayfire_flashbang_job : public wf::per_output_plugin_instance_t
         GL_CALL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE));
         GL_CALL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE));
 
-        GLenum format = (image.format == wf::image_io::IMAGE_FORMAT_RGBA) ? 
-            GL_RGBA : GL_RGB;
+        int stride = cairo_image_surface_get_stride(surface);
+        std::vector<uint32_t> rgba_data(image_width * image_height);
         
-        GL_CALL(glTexImage2D(GL_TEXTURE_2D, 0, format,
-            image.width, image.height, 0, format,
-            GL_UNSIGNED_BYTE, image.data));
+        for (int y = 0; y < image_height; y++)
+        {
+            uint32_t *src = (uint32_t*)(data + y * stride);
+            uint32_t *dst = rgba_data.data() + y * image_width;
+            
+            for (int x = 0; x < image_width; x++)
+            {
+                uint32_t pixel = src[x];
+                uint32_t b = (pixel >> 0) & 0xFF;
+                uint32_t g = (pixel >> 8) & 0xFF;
+                uint32_t r = (pixel >> 16) & 0xFF;
+                uint32_t a = (pixel >> 24) & 0xFF;
+                
+                // Premultiply alpha
+                if (a != 0 && a != 255)
+                {
+                    r = (r * a) / 255;
+                    g = (g * a) / 255;
+                    b = (b * a) / 255;
+                }
+                
+                dst[x] = (a << 24) | (b << 16) | (g << 8) | r;
+            }
+        }
+
+        GL_CALL(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
+            image_width, image_height, 0, GL_RGBA,
+            GL_UNSIGNED_BYTE, rgba_data.data()));
         
         GL_CALL(glBindTexture(GL_TEXTURE_2D, 0));
         
-        LOGI("flashbang-job: Loaded image from ", image_path);
+        cairo_surface_destroy(surface);
+        
+        LOGI("flashbang-job: Loaded image from ", image_path, 
+             " (", image_width, "x", image_height, ")");
     }
 
     void trigger_effect()
     {
         if (!output->can_activate_plugin(&grab_interface))
         {
+            return;
+        }
+
+        if (!job_texture)
+        {
+            LOGE("flashbang-job: No image loaded, cannot trigger effect");
             return;
         }
 
@@ -271,7 +314,7 @@ class wayfire_flashbang_job : public wf::per_output_plugin_instance_t
             program.free_resources();
         });
 
-        output->disconnect(&ipc_signal);
+        ipc_repo->unregister_method("flashbang-job/trigger");
     }
 };
 
