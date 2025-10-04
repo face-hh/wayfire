@@ -107,13 +107,14 @@ class wayfire_flashbang_job : public wf::per_output_plugin_instance_t
         std::string home = getenv("HOME") ?: "";
         std::string image_path = home + "/.fuck/job.png";
         
+        LOGI("flashbang-job: Attempting to load image from ", image_path);
+        
         cairo_surface_t *surface = cairo_image_surface_create_from_png(image_path.c_str());
         
         cairo_status_t status = cairo_surface_status(surface);
         if (status != CAIRO_STATUS_SUCCESS)
         {
-            LOGE("flashbang-job: Failed to load image from ", image_path, 
-                 ": ", cairo_status_to_string(status));
+            LOGE("flashbang-job: Failed to load image: ", cairo_status_to_string(status));
             cairo_surface_destroy(surface);
             return;
         }
@@ -172,8 +173,11 @@ class wayfire_flashbang_job : public wf::per_output_plugin_instance_t
 
     void trigger_effect()
     {
+        LOGI("flashbang-job: trigger_effect() called");
+        
         if (!output->can_activate_plugin(&grab_interface))
         {
+            LOGE("flashbang-job: Cannot activate plugin (another plugin is active)");
             return;
         }
 
@@ -183,6 +187,7 @@ class wayfire_flashbang_job : public wf::per_output_plugin_instance_t
             return;
         }
 
+        LOGI("flashbang-job: Starting effect - state=FLASHBANG");
         state = AnimationState::FLASHBANG;
         state_start_time = wf::get_current_time();
         alpha.animate(1.0);
@@ -192,6 +197,7 @@ class wayfire_flashbang_job : public wf::per_output_plugin_instance_t
             hook_set = true;
             output->render->add_post(&render_hook);
             output->render->set_redraw_always();
+            LOGI("flashbang-job: Render hook installed");
         }
     }
 
